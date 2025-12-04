@@ -1,32 +1,25 @@
-use actix_web::{
-    HttpResponse,
-    error::ErrorInternalServerError,
-    error::ErrorBadRequest
-};
-use tokio::{
-    fs, 
-    io::AsyncWriteExt,
-};
+use actix_web::{HttpResponse, error::ErrorBadRequest, error::ErrorInternalServerError};
+use tokio::{fs, io::AsyncWriteExt};
 
-use crate::models::*; 
-use tokio_util::codec::{BytesCodec, FramedRead};
+use crate::models::*;
 use actix_web::web::{Bytes, Payload};
+use tokio_util::codec::{BytesCodec, FramedRead};
 
 // Importa i tratti necessari per lo streaming e la gestione degli errori asincroni
 use futures_util::stream::{StreamExt, TryStreamExt};
 
-// Directory Radice 
+// Directory Radice
 pub const ROOT_DIR: &str = "/tmp/rfs_storage";
 
 // --- GET /list/{nome_file} ---
 pub async fn list_directory(safe_path: SafePath) -> Result<HttpResponse, actix_web::Error> {
-    
-    let full_path = safe_path.into_inner(); 
-    
-    if !fs::metadata(&full_path).await?.is_dir() {
-        return Err(ErrorBadRequest("Il percorso specificato non è una directory."));
-    }
+    let full_path = safe_path.into_inner();
 
+    if !fs::metadata(&full_path).await?.is_dir() {
+        return Err(ErrorBadRequest(
+            "Il percorso specificato non è una directory.",
+        ));
+    }
 
     let mut entries = Vec::new();
 
@@ -40,7 +33,7 @@ pub async fn list_directory(safe_path: SafePath) -> Result<HttpResponse, actix_w
                             let file_entry = FileEntry::from_metadata(file_name, metadata.into());
                             entries.push(file_entry);
                         }
-                    },
+                    }
                     Err(e) => eprintln!("Errore nella lettura dell'elemento: {}", e),
                 }
             }
@@ -48,7 +41,10 @@ pub async fn list_directory(safe_path: SafePath) -> Result<HttpResponse, actix_w
         }
         Err(e) => {
             eprintln!("Errore di I/O nella directory: {}", e);
-            Err(ErrorInternalServerError(format!("Errore I/O server: {}", e)))
+            Err(ErrorInternalServerError(format!(
+                "Errore I/O server: {}",
+                e
+            )))
         }
     }
 }
@@ -56,7 +52,7 @@ pub async fn list_directory(safe_path: SafePath) -> Result<HttpResponse, actix_w
 // ---  GET /files/{nome_file} (Lettura in Streaming) ---
 pub async fn read_file_contents(path: SafePath) -> Result<HttpResponse, actix_web::Error> {
     let full_path = path.into_inner();
-    
+    dbg!("read_file_contents", &full_path);
     if !fs::metadata(&full_path).await?.is_file() {
         return Err(ErrorBadRequest("Il percorso specificato non è un file."));
     }
@@ -65,16 +61,21 @@ pub async fn read_file_contents(path: SafePath) -> Result<HttpResponse, actix_we
         Ok(f) => f,
         Err(e) => {
             if e.kind() == std::io::ErrorKind::NotFound {
-                return Ok(HttpResponse::NotFound().body(format!("File non trovato: {:?}", full_path)));
+                return Ok(
+                    HttpResponse::NotFound().body(format!("File non trovato: {:?}", full_path))
+                );
             }
-            return Err(ErrorInternalServerError(format!("Errore di apertura file: {}", e)));
+            return Err(ErrorInternalServerError(format!(
+                "Errore di apertura file: {}",
+                e
+            )));
         }
     };
 
     let stream = FramedRead::new(file, BytesCodec::new())
         .map_ok(|bytes| Bytes::from(bytes.freeze()))
         .map_err(|e| ErrorInternalServerError(e));
-    
+
     Ok(HttpResponse::Ok()
         .content_type("application/octet-stream")
         .streaming(stream))
@@ -85,14 +86,16 @@ pub async fn write_file_contents(
     path: SafePath,
     mut payload: Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
-
     let full_path = path.into_inner();
-
+    dbg!(&full_path);
     let mut file = match fs::File::create(&full_path).await {
         Ok(f) => f,
         Err(e) => {
             eprintln!("Errore nella creazione del file {:?}: {}", full_path, e);
-            return Err(ErrorInternalServerError(format!("Errore I/O server: {}", e)));
+            return Err(ErrorInternalServerError(format!(
+                "Errore I/O server: {}",
+                e
+            )));
         }
     };
 
@@ -101,15 +104,39 @@ pub async fn write_file_contents(
             Ok(bytes) => {
                 if let Err(e) = file.write_all(bytes.as_ref()).await {
                     eprintln!("Errore di scrittura su file {:?}: {}", full_path, e);
-                    return Err(ErrorInternalServerError(format!("Errore di scrittura: {}", e)));
+                    return Err(ErrorInternalServerError(format!(
+                        "Errore di scrittura: {}",
+                        e
+                    )));
                 }
             }
             Err(e) => {
                 eprintln!("Errore nella lettura del payload HTTP: {}", e);
-                return Err(ErrorInternalServerError("Errore di streaming HTTP".to_string()));
+                return Err(ErrorInternalServerError(
+                    "Errore di streaming HTTP".to_string(),
+                ));
             }
         }
     }
 
     Ok(HttpResponse::Created().body(format!("File creato/aggiornato: {:?}", full_path)))
+}
+
+// --- POST /mkdir/{nome_directory} (Crea Directory) ---
+pub async fn create_directory(path: SafePath) -> Result<HttpResponse, actix_web::Error> {
+    let full_path = path.into_inner();
+    dbg!(&full_path);
+    match fs::create_dir_all(&full_path).await {
+        Ok(_) => Ok(HttpResponse::Created().body(format!("Directory creata: {:?}", full_path))),
+        Err(e) => {
+            eprintln!(
+                "Errore nella creazione della directory {:?}: {}",
+                full_path, e
+            );
+            Err(ErrorInternalServerError(format!(
+                "Errore I/O server: {}",
+                e
+            )))
+        }
+    }
 }
