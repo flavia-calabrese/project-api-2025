@@ -140,3 +140,24 @@ pub async fn create_directory(path: SafePath) -> Result<HttpResponse, actix_web:
         }
     }
 }
+
+// --- DELETE /files/{nome_file} ---
+pub async fn delete_file_or_directory(path: SafePath) -> Result<HttpResponse, actix_web::Error> {
+    let full_path = path.into_inner();
+    dbg!(&full_path);
+    let result = if fs::metadata(&full_path).await?.is_dir() {
+        fs::remove_dir_all(full_path).await
+    } else {
+        fs::remove_file(full_path).await
+    };
+    match result {
+        Ok(_) => Ok(HttpResponse::Ok().body("Eliminazione avvenuta con successo.")),
+        Err(e) => {
+            eprintln!("Errore durante l'eliminazione: {}", e);
+            Err(ErrorInternalServerError(format!(
+                "Errore I/O server: {}",
+                e
+            )))
+        }
+    }
+}
