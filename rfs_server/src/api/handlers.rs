@@ -1,4 +1,9 @@
-use actix_web::{HttpResponse, error::ErrorBadRequest, error::ErrorInternalServerError};
+use actix_web::{
+    HttpResponse,
+    error::{ErrorBadRequest, ErrorInternalServerError},
+    web::Json,
+};
+use serde::Deserialize;
 use tokio::{fs, io::AsyncWriteExt};
 
 use crate::models::*;
@@ -154,6 +159,41 @@ pub async fn delete_file_or_directory(path: SafePath) -> Result<HttpResponse, ac
         Ok(_) => Ok(HttpResponse::Ok().body("Eliminazione avvenuta con successo.")),
         Err(e) => {
             eprintln!("Errore durante l'eliminazione: {}", e);
+            Err(ErrorInternalServerError(format!(
+                "Errore I/O server: {}",
+                e
+            )))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct RenameRequest {
+    new_name: String,
+}
+
+// --- PATCH /files/{nome_file}
+pub async fn rename_file_or_directory(
+    path: SafePath,
+    body: Json<RenameRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let full_path = path.into_inner();
+    let new_name = &body.new_name;
+
+    let parent = full_path.parent().ok_or_else(|| {
+        actix_web::error::ErrorBadRequest("Impossibile determinare la cartella del file")
+    })?;
+
+    // Costruisci il percorso completo del nuovo file
+    let new_path = parent.join(new_name);
+
+    // Esegui il rename
+    let result = fs::rename(&full_path, &new_path).await;
+
+    match result {
+        Ok(_) => Ok(HttpResponse::Ok().body(format!("File rinominato in {}", new_path.display()))),
+        Err(e) => {
+            eprintln!("Errore durante il renaming: {}", e);
             Err(ErrorInternalServerError(format!(
                 "Errore I/O server: {}",
                 e
