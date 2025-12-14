@@ -1,3 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["remote_file_system", "rfs_server"]
+members = ["remote_file_system", "rfs_server", "shared"]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] } 

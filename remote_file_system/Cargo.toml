@@ -5,3 +5,9 @@ edition = "2024"
 
 [dependencies]
 fuser = "0.16.0"
+libc = "0.2"
+env_logger = "0.11.8"
+log = "0.4.29"
+serde.workspace = true
+reqwest = {version = "0.12.25", features = ["blocking", "json"]}
+shared = { path = "../shared" }

@@ -11,10 +11,14 @@ actix-web = "4"
 tokio = { version = "1", features = ["full"] } 
 
 # Per la serializzazione/deserializzazione JSON
-serde = { version = "1.0", features = ["derive"] } 
+serde.workspace = true
 
 # Per lo streaming dei file (necessario per FramedRead e BytesCodec)
 tokio-util = { version = "0.7", features = ["codec"] } 
 
 # Per i tratti degli stream asincroni (come StreamExt per payload.next())
 futures-util = "0.3"
+
+
+# Per l'import di tipi di dati comuni
+shared = { path = "../shared" }

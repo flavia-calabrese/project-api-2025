@@ -4,6 +4,7 @@ use actix_web::{
     web::Json,
 };
 use serde::Deserialize;
+use shared::file_entry::FileEntry;
 use tokio::{fs, io::AsyncWriteExt};
 
 use crate::models::*;
