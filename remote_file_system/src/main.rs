@@ -2,34 +2,18 @@ use fuser::{
     FileAttr, FileType, Filesystem, MountOption, ReplyAttr, ReplyDirectory, ReplyEntry, Request,
 };
 use libc::ENOENT;
-use log::LevelFilter;
+use log::{LevelFilter, info};
 use shared::file_entry::FileEntry;
 use std::{
     ffi::OsStr,
-    time::{Duration, UNIX_EPOCH},
+    time::Duration,
 };
 mod api;
+mod cache;
 
-use crate::api::Api;
+use crate::cache::{Cache, Inode};
 
 const TTL: Duration = Duration::from_secs(1); // 1 second
-const REMOTE_FS_BASE_DIR: FileAttr = FileAttr {
-    ino: 1,
-    size: 0,
-    blocks: 0,
-    atime: UNIX_EPOCH, // 1970-01-01 00:00:00
-    mtime: UNIX_EPOCH,
-    ctime: UNIX_EPOCH,
-    crtime: UNIX_EPOCH,
-    kind: FileType::Directory,
-    perm: 0o755,
-    nlink: 2,
-    uid: 501,
-    gid: 20,
-    rdev: 0,
-    flags: 0,
-    blksize: 512,
-};
 
 struct FileAttrWrapper(FileAttr);
 
@@ -60,12 +44,14 @@ impl From<FileEntry> for FileAttrWrapper {
 }
 
 struct RemoteFS {
-    api: Api,
+    cache: Cache,
 }
 
 impl RemoteFS {
     fn new() -> Self {
-        Self { api: Api::new() }
+        Self {
+            cache: Cache::new(),
+        }
     }
 }
 
@@ -77,24 +63,42 @@ impl Filesystem for RemoteFS {
     }
     */
     fn getattr(&mut self, _req: &Request<'_>, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
-        match ino {
-            1 => reply.attr(&TTL, &REMOTE_FS_BASE_DIR),
-            _ => reply.error(ENOENT),
+        // prendo il file in cache
+        let file = self.cache.get_file_by_ino(Inode(ino));
+        match file {
+            Some(file) => {
+                // trasformo da FileEntry in FileAttr
+                let file_attr = FileAttrWrapper::from(file.file_entry).0;
+                reply.attr(&TTL, &file_attr);
+            }
+            None => reply.error(ENOENT),
         }
     }
 
-    fn lookup(&mut self, _req: &Request<'_>, _parent: u64, name: &OsStr, reply: ReplyEntry) {
-        // se api ritorna Ok -> il suo contenuto viene salvato in entries, altrimenti esegue il blocco else
-        let Ok(entries) = self.api.list_dir("/") else {
+    /// data una dir con `inode = parent`, restituisce un FileAttr di un file con nome `name`
+    fn lookup(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEntry) {
+        let file = self.cache.get_file_by_ino(Inode(parent));
+
+        let Some(file) = file else {
+            info!("file not found: {:?}", Inode(parent));
             reply.error(ENOENT);
             return;
         };
+        // se list_dir ritorna Ok -> il suo contenuto viene salvato in entries, altrimenti esegue il branch Err()
+        let entries = match self.cache.list_dir(file.file_path.to_str().unwrap()) {
+            Ok(entries) => entries,
+            Err(err) => {
+                info!("list_dir failed: {:?}", err);
+                reply.error(ENOENT);
+                return;
+            }
+        };
 
-        dbg!(&entries);
-
+        // recupero il file con nome name
         let file = entries
             .into_iter()
             .find(|f| f.name == name.to_string_lossy());
+
         match file {
             Some(f) => {
                 let inode = FileAttrWrapper::from(f).0;
@@ -104,17 +108,30 @@ impl Filesystem for RemoteFS {
         }
     }
 
+    /// legge il contenuto di una cartella con inode `ino`
     fn readdir(
         &mut self,
         _req: &Request<'_>,
-        _ino: u64,
+        ino: u64,
         _fh: u64,
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        let Ok(mut entries) = self.api.list_dir("/") else {
+        let file = self.cache.get_file_by_ino(Inode(ino));
+
+        let Some(file) = file else {
+            info!("file not found: {:?}", Inode(ino));
             reply.error(ENOENT);
             return;
+        };
+        // se list_dir ritorna Ok -> il suo contenuto viene salvato in entries, altrimenti esegue il branch Err()
+        let mut entries = match self.cache.list_dir(file.file_path.to_str().unwrap()) {
+            Ok(entries) => entries,
+            Err(err) => {
+                info!("list_dir failed: {:?}", err);
+                reply.error(ENOENT);
+                return;
+            }
         };
 
         // sort entries by inode

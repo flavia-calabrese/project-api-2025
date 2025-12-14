@@ -1,6 +1,7 @@
 use reqwest::blocking::Client;
 use shared::file_entry::FileEntry;
 
+#[derive(Debug, Clone)]
 pub struct Api {
     pub base_url: String,
     pub client: Client,
