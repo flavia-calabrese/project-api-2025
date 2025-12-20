@@ -1,13 +1,19 @@
+use std::io::SeekFrom;
+
 use actix_web::{
-    HttpResponse,
+    HttpRequest, HttpResponse,
     error::{ErrorBadRequest, ErrorInternalServerError},
-    web::Json,
+    http::header,
+    web::{Json, Query},
 };
 use serde::Deserialize;
 use shared::file_entry::FileEntry;
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::{
+    fs,
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
+};
 
-use crate::models::*;
+use crate::{helpers::parse_range, models::*};
 use actix_web::web::{Bytes, Payload};
 use tokio_util::codec::{BytesCodec, FramedRead};
 
@@ -56,14 +62,23 @@ pub async fn list_directory(safe_path: SafePath) -> Result<HttpResponse, actix_w
 }
 
 // ---  GET /files/{nome_file} (Lettura in Streaming) ---
-pub async fn read_file_contents(path: SafePath) -> Result<HttpResponse, actix_web::Error> {
+pub async fn read_file_contents(
+    req: HttpRequest,
+    path: SafePath,
+) -> Result<HttpResponse, actix_web::Error> {
     let full_path = path.into_inner();
-    dbg!("read_file_contents", &full_path);
-    if !fs::metadata(&full_path).await?.is_file() {
-        return Err(ErrorBadRequest("Il percorso specificato non è un file."));
-    }
+    // dbg!("read_file_contents", &full_path);
 
-    let file = match fs::File::open(&full_path).await {
+    let metadata = fs::metadata(&full_path).await?;
+    if !metadata.is_file() {
+        return Err(ErrorBadRequest("Il percorso non è un file"));
+    }
+    let file_size = metadata.len();
+
+    let (start, end) = parse_range(&req, file_size)?;
+    let length = end - start + 1;
+
+    let mut file = match fs::File::open(&full_path).await {
         Ok(f) => f,
         Err(e) => {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -78,11 +93,19 @@ pub async fn read_file_contents(path: SafePath) -> Result<HttpResponse, actix_we
         }
     };
 
-    let stream = FramedRead::new(file, BytesCodec::new())
+    file.seek(SeekFrom::Start(start)).await?;
+
+    let stream = FramedRead::new(file.take(length), BytesCodec::new())
         .map_ok(|bytes| Bytes::from(bytes.freeze()))
         .map_err(|e| ErrorInternalServerError(e));
 
-    Ok(HttpResponse::Ok()
+    Ok(HttpResponse::PartialContent()
+        .insert_header((
+            header::CONTENT_RANGE,
+            format!("bytes {}-{}/{}", start, end, file_size),
+        ))
+        .insert_header((header::ACCEPT_RANGES, "bytes"))
+        .insert_header((header::CONTENT_LENGTH, length))
         .content_type("application/octet-stream")
         .streaming(stream))
 }
@@ -93,7 +116,7 @@ pub async fn write_file_contents(
     mut payload: Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
     let full_path = path.into_inner();
-    dbg!(&full_path);
+    // dbg!(&full_path);
     let mut file = match fs::File::create(&full_path).await {
         Ok(f) => f,
         Err(e) => {
@@ -131,7 +154,7 @@ pub async fn write_file_contents(
 // --- POST /mkdir/{nome_directory} (Crea Directory) ---
 pub async fn create_directory(path: SafePath) -> Result<HttpResponse, actix_web::Error> {
     let full_path = path.into_inner();
-    dbg!(&full_path);
+    // dbg!(&full_path);
     match fs::create_dir_all(&full_path).await {
         Ok(_) => Ok(HttpResponse::Created().body(format!("Directory creata: {:?}", full_path))),
         Err(e) => {
@@ -150,7 +173,7 @@ pub async fn create_directory(path: SafePath) -> Result<HttpResponse, actix_web:
 // --- DELETE /files/{nome_file} ---
 pub async fn delete_file_or_directory(path: SafePath) -> Result<HttpResponse, actix_web::Error> {
     let full_path = path.into_inner();
-    dbg!(&full_path);
+    // dbg!(&full_path);
     let result = if fs::metadata(&full_path).await?.is_dir() {
         fs::remove_dir_all(full_path).await
     } else {

@@ -42,7 +42,7 @@ impl FromRequest for SafePath {
             Ok(path) => {
                 let relative_path = path.into_inner();
                 let mut last_part: Option<PathBuf> = None;
-                dbg!(&relative_path);
+                // dbg!(&relative_path);
                 let mut full_path = root_path.clone();
                 full_path.push(relative_path.as_path());
 
@@ -75,7 +75,7 @@ impl FromRequest for SafePath {
                     .boxed_local();
                 }
 
-                dbg!(&path_to_verify, &full_path);
+                // dbg!(&path_to_verify, &full_path);
 
                 match path_to_verify.canonicalize() {
                     Ok(canonical_path) => {

@@ -1,5 +1,6 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr, time::SystemTime};
 
+use log::info;
 use shared::file_entry::FileEntry;
 
 use crate::api::Api;
@@ -67,5 +68,24 @@ impl Cache {
 
     pub fn get_file_by_ino(&self, ino: Inode) -> Option<CachedFile> {
         self.files.get(&ino).cloned()
+    }
+
+    pub fn get_file_content(
+        &self,
+        ino: Inode,
+        offset: u64,
+        size: u32,
+    ) -> Result<Vec<u8>, std::io::Error> {
+        let Some(file) = self.files.get(&ino).cloned() else {
+            info!("file not found");
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "file not found",
+            ));
+        };
+        let path = file.file_path.to_str().unwrap();
+        let content = self.api.read_file_contents(path, offset, size);
+        //dbg!(&content);
+        content
     }
 }

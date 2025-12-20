@@ -3,8 +3,9 @@
 use actix_web::{App, HttpServer, web};
 use tokio::fs;
 
+mod api; // Dichiara il modulo API (che contiene i handlers)
+mod helpers;
 mod models; // Dichiara il modulo per le strutture dati
-mod api;    // Dichiara il modulo API (che contiene i handlers)
 
 // La funzione principale per avviare il server
 #[actix_web::main]
