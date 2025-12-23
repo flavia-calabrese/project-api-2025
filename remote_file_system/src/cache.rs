@@ -88,4 +88,25 @@ impl Cache {
         //dbg!(&content);
         content
     }
+
+    pub fn write_file_content (
+        &self, 
+        ino: Inode, 
+        data: Vec<u8>
+    ) -> Result<(), std::io::Error> {
+        if let Some(file) = self.files.get(&ino) {
+            let path_str = file.file_path.to_str().unwrap_or("");
+            self.api.write_file_contents(path_str, data)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"))
+        }
+    }
+
+    pub fn add_to_cache(&mut self, path: PathBuf, entry: FileEntry) {
+        let ino = Inode(entry.ino);
+        self.files.insert(ino, CachedFile {
+            file_path: path,
+            file_entry: entry,
+        });
+    }
 }

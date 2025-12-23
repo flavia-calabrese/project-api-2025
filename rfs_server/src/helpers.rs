@@ -23,14 +23,23 @@ pub fn parse_range(req: &HttpRequest, file_size: u64) -> Result<(u64, u64), acti
         .and_then(|v| v.parse().ok())
         .ok_or_else(|| ErrorBadRequest("Invalid Range start"))?;
 
+    // saturating_sub(1) restituisce 0 se il valore è 0, invece di crashare
+    let file_last_byte = file_size.saturating_sub(1);
+
     let mut end: u64 = parts
         .next()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(file_size - 1);
+        .unwrap_or(file_last_byte);
 
-    if end >= file_size {
-        end = file_size - 1;
+    if end >= file_size && file_size > 0 {
+        // end = file_size - 1;
+        end = file_last_byte;
     }
+
+    if file_size == 0 {
+        return Ok((0,0));
+    }
+
     /*|| end >= file_size*/
     if start > end {
         return Err(ErrorBadRequest("Invalid Range bounds"));

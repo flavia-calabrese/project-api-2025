@@ -116,6 +116,7 @@ pub async fn write_file_contents(
     mut payload: Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
     let full_path = path.into_inner();
+    println!("Richiesta ricevuta per: {:?}", full_path);
     // dbg!(&full_path);
     let mut file = match fs::File::create(&full_path).await {
         Ok(f) => f,
@@ -128,26 +129,36 @@ pub async fn write_file_contents(
         }
     };
 
+    let mut total_bytes = 0;
     while let Some(chunk) = payload.next().await {
         match chunk {
             Ok(bytes) => {
-                if let Err(e) = file.write_all(bytes.as_ref()).await {
+                file.write_all(&bytes).await.map_err(|e| {
                     eprintln!("Errore di scrittura su file {:?}: {}", full_path, e);
-                    return Err(ErrorInternalServerError(format!(
-                        "Errore di scrittura: {}",
-                        e
-                    )));
-                }
+                    ErrorInternalServerError(e)
+                })?;
+                total_bytes += bytes.len();
+                // if let Err(e) = file.write_all(bytes.as_ref()).await {
+                //     eprintln!("Errore di scrittura su file {:?}: {}", full_path, e);
+                //     return Err(ErrorInternalServerError(format!(
+                //         "Errore di scrittura: {}",
+                //         e
+                //     )));
+                // }
             }
             Err(e) => {
-                eprintln!("Errore nella lettura del payload HTTP: {}", e);
-                return Err(ErrorInternalServerError(
-                    "Errore di streaming HTTP".to_string(),
+                eprintln!("Errore nella lettura del payload HTTP per {:?}: {}", full_path, e);
+                return Err(ErrorInternalServerError(e
+                    //"Errore di streaming HTTP".to_string(),
                 ));
             }
         }
     }
 
+    // sincronizza i dati sul disco
+    file.sync_all().await?;
+
+    println!("Success: write completed. Received {} byte for {:?}", total_bytes, full_path);
     Ok(HttpResponse::Created().body(format!("File creato/aggiornato: {:?}", full_path)))
 }
 
