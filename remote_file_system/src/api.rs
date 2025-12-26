@@ -89,9 +89,17 @@ impl Api {
     //     if resp.status().is_success() { Ok(()) } else { Err(resp.error_for_status().unwrap_err()) }
     // }
 
-    // pub fn create_directory(&self, path: &str) -> reqwest::Result<()> {
-    //     let url = format!("{}mkdir{}", self.base_url, path);
-    //     let resp = self.client.post(&url).send()?;
-    //     if resp.status().is_success() { Ok(()) } else { Err(resp.error_for_status().unwrap_err()) }
-    // }
+    pub fn create_directory(&self, path: &str) -> reqwest::Result<()> {
+        let clean_path = path.trim_start_matches('/');
+
+        let url = format!("{}mkdir/{}", self.base_url, clean_path);
+
+        let resp = self.client.post(&url).send()?;
+
+        if resp.status().is_success() { 
+            Ok(()) 
+        } else { 
+            Err(resp.error_for_status().unwrap_err()) 
+        }
+    }
 }

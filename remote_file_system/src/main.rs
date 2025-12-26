@@ -507,6 +507,53 @@ impl Filesystem for RemoteFS {
         // Implementazione speculare a lookup ma per un nuovo file
         reply.error(libc::ENOSYS); // Opzionale: implementa se touch non basta
     }
+
+    fn mkdir(
+        &mut self,
+        _req: &Request<'_>,
+        parent: u64,
+        name: &OsStr,
+        mode: u32,
+        _umask: u32,
+        reply: ReplyEntry,
+    ) {
+        let name_str = name.to_string_lossy();
+
+        if let Some(parent_file) = self.cache.get_file_by_ino(Inode(parent)) {
+            let mut new_path = parent_file.file_path.clone();
+            new_path.push(name_str.as_ref());
+            let path_str = new_path.to_str().unwrap_or("");
+
+            match self.cache.api.create_directory(path_str) {
+                Ok(_) => {
+                    let new_ino = SystemTime::now()
+                        .duration_since(SystemTime::UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as u64 % 1_000_000 + 5000;
+
+                    let new_entry = FileEntry {
+                        ino: new_ino,
+                        name: name_str.into_owned(),
+                        is_dir: true,
+                        size: 4096, // dim standard per le directory
+                        modified_at: SystemTime::now(),
+                        permissions: mode,
+                    };
+
+                    self.cache.add_to_cache(new_path, new_entry.clone());
+
+                    let attr = FileAttrWrapper::from(new_entry).0;
+                    reply.entry(&TTL, &attr, 0);
+                }
+                Err(e) => {
+                    info!("Errore mkdir sul server: {:?}", e);
+                    reply.error(libc::EIO);
+                }
+            }
+        } else {
+            reply.error(ENOENT);        
+        }
+    }
 }
 
 fn main() {

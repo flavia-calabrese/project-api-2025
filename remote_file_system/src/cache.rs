@@ -17,7 +17,7 @@ pub struct CachedFile {
 #[derive(Debug)]
 pub struct Cache {
     files: HashMap<Inode, CachedFile>,
-    api: Api,
+    pub api: Api,
 }
 
 impl Cache {
