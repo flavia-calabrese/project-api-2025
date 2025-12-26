@@ -9,5 +9,6 @@ libc = "0.2"
 env_logger = "0.11.8"
 log = "0.4.29"
 serde.workspace = true
+serde_json = "1.0"
 reqwest = {version = "0.12.25", features = ["blocking", "json"]}
 shared = { path = "../shared" }

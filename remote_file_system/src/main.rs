@@ -554,6 +554,42 @@ impl Filesystem for RemoteFS {
             reply.error(ENOENT);        
         }
     }
+
+    fn rename(
+        &mut self,
+        _req: &Request<'_>,
+        parent: u64,
+        name: &OsStr,
+        _newparent: u64,
+        newname: &OsStr,
+        _flags: u32,
+        reply: fuser::ReplyEmpty,
+    ) {
+        let old_name = name.to_string_lossy();
+        let new_name = newname.to_string_lossy();
+
+        // prende il percorso del file originale
+        if let Some(parent_file) = self.cache.get_file_by_ino(Inode(parent)) {
+            let mut old_path = parent_file.file_path.clone();
+            old_path.push(old_name.as_ref());
+            let old_path_str = old_path.to_str().unwrap_or("");
+
+            // chiama API per rename
+            match self.cache.api.rename_entry(old_path_str, &new_name) {
+                Ok(_) => {
+                    // Opzionale: Qui potresti aggiornare la cache locale, 
+                    // ma list_dir sistemerà tutto al prossimo 'ls'
+                    reply.ok();
+                }
+                Err(e) => {
+                    info!("Errore rename sul server: {:?}", e);
+                    reply.error(libc::EIO);
+                }
+            }
+        } else {
+            reply.error(libc::ENOENT);
+        }
+    }
 }
 
 fn main() {

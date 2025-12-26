@@ -102,4 +102,22 @@ impl Api {
             Err(resp.error_for_status().unwrap_err()) 
         }
     }
+
+    pub fn rename_entry(&self, old_path: &str, new_name: &str) -> reqwest::Result<()> {
+        let clean_old_path = old_path.trim_start_matches('/');
+        let url = format!("{}files/{}", self.base_url, clean_old_path);
+        
+        // Il server si aspetta un JSON con { "new_name": "..." }
+        let body = serde_json::json!({ "new_name": new_name });
+
+        let resp = self.client.patch(&url)
+            .json(&body)
+            .send()?;
+        
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(resp.error_for_status().unwrap_err())
+        }
+    }
 }
