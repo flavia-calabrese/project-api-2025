@@ -1,5 +1,5 @@
 use libc::off64_t;
-use reqwest::{StatusCode, blocking::Client};
+use reqwest::{Error, StatusCode, blocking::Client};
 use shared::file_entry::FileEntry;
 
 #[derive(Debug, Clone)]
@@ -51,5 +51,15 @@ impl Api {
             StatusCode::NOT_FOUND => Err(std::io::ErrorKind::NotFound.into()),
             _ => Err(std::io::ErrorKind::Other.into()),
         }
+    }
+
+    pub fn delete_file_or_directory(&self, path: &str) -> reqwest::Result<()> {
+        assert!(path.starts_with('/'));
+        let url = format!("{}files{}", self.base_url, path);
+        dbg!(&url);
+
+        self.client.delete(&url).send()?;
+
+        Ok(())
     }
 }

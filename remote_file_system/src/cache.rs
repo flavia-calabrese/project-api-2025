@@ -88,4 +88,18 @@ impl Cache {
         //dbg!(&content);
         content
     }
+
+    pub fn delete_file_or_directory(&mut self, path: &str, ino: Inode) -> reqwest::Result<()> {
+        info!("delete path={:?}", path);
+        //rimuovo dal server
+        let res = self.api.delete_file_or_directory(path);
+        match res {
+            Ok(_) => {
+                // rimuovo dalla cache
+                self.files.remove_entry(&ino);
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
+    }
 }
